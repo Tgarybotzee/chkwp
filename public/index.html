@@ -3,24 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Checker</title>
+    <title>WhatsApp Checker Dashboard</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
-        textarea { width: 100%; height: 150px; margin-bottom: 10px; }
-        button { padding: 10px 20px; background: #25D366; color: white; border: none; cursor: pointer; }
-        #logs { background: #f0f0f0; padding: 10px; height: 300px; overflow-y: scroll; margin-top: 10px; white-space: pre-wrap; font-family: monospace;}
-        #qr-container img { max-width: 250px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 700px; margin: auto; background: #f9fafb; color: #111827; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; }
+        .bg-green { background: #dcfce7; color: #166534; }
+        .bg-yellow { background: #fef08a; color: #854d0e; }
+        .bg-red { background: #fee2e2; color: #991b1b; }
+        textarea { width: 100%; height: 120px; margin: 10px 0; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-primary { background: #25D366; color: white; }
+        .btn-danger { background: #ef4444; color: white; font-size: 12px; padding: 6px 12px; }
+        #logs { background: #1f2937; color: #a7f3d0; padding: 15px; height: 300px; overflow-y: scroll; border-radius: 6px; font-family: monospace; white-space: pre-wrap; }
+        #qr-container { text-align: center; margin: 20px 0; display: none; }
+        #qr-container img { max-width: 250px; border: 10px solid white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
-    <h2>WhatsApp Bulk Number Checker</h2>
-    
-    <h4 id="status">Starting client...</h4>
-    <div id="qr-container"></div>
+    <div class="card header">
+        <h2>WhatsApp Checker</h2>
+        <div>
+            <span id="status-badge" class="status-badge bg-yellow">Connecting...</span>
+            <button class="btn-danger" onclick="resetSession()">Relink Account</button>
+        </div>
+    </div>
 
-    <textarea id="numbers" placeholder="Paste numbers here, separated by spaces, commas, or new lines..."></textarea>
-    <br>
-    <button onclick="startCheck()">Check Numbers</button>
+    <div id="qr-container" class="card">
+        <h3>Link your Device</h3>
+        <p>Open WhatsApp on your phone > Linked Devices > Link a Device.</p>
+        <img id="qr-image" src="" alt="WhatsApp QR Code" />
+    </div>
+
+    <div class="card">
+        <textarea id="numbers" placeholder="Paste leads here (e.g. 9876543210, 9876543211)..."></textarea>
+        <button class="btn-primary" onclick="startCheck()" id="check-btn" disabled>Check Numbers</button>
+    </div>
 
     <div id="logs"></div>
 
@@ -29,20 +48,36 @@
         const socket = io();
         const logsDiv = document.getElementById('logs');
         const qrContainer = document.getElementById('qr-container');
-        const statusText = document.getElementById('status');
+        const qrImage = document.getElementById('qr-image');
+        const statusBadge = document.getElementById('status-badge');
+        const checkBtn = document.getElementById('check-btn');
 
-        socket.on('status', (msg) => {
-            statusText.innerText = msg;
-            if (msg.includes('ready')) qrContainer.innerHTML = ''; // Clear QR once connected
+        // Handle dynamic states from the backend
+        socket.on('status', (data) => {
+            statusBadge.innerText = data.msg;
+            
+            if (data.type === 'connected') {
+                statusBadge.className = 'status-badge bg-green';
+                qrContainer.style.display = 'none';
+                checkBtn.disabled = false;
+            } else if (data.type === 'qr') {
+                statusBadge.className = 'status-badge bg-yellow';
+                qrContainer.style.display = 'block';
+                checkBtn.disabled = true;
+            } else {
+                statusBadge.className = 'status-badge bg-red';
+                checkBtn.disabled = true;
+            }
         });
 
-        socket.on('qr', (qrImage) => {
-            qrContainer.innerHTML = `<p>Scan to log in:</p><img src="${qrImage}" />`;
+        socket.on('qr', (qrDataUrl) => {
+            qrContainer.style.display = 'block';
+            qrImage.src = qrDataUrl;
         });
 
         socket.on('log', (msg) => {
             logsDiv.innerHTML += msg + '\n';
-            logsDiv.scrollTop = logsDiv.scrollHeight; // Auto-scroll to bottom
+            logsDiv.scrollTop = logsDiv.scrollHeight;
         });
 
         function startCheck() {
@@ -54,6 +89,14 @@
                 socket.emit('check_numbers', cleanNumbers);
             } else {
                 alert("Please enter valid numbers.");
+            }
+        }
+
+        function resetSession() {
+            if (confirm("This will log out the current WhatsApp session and generate a new QR code. Continue?")) {
+                socket.emit('reset_session');
+                logsDiv.innerHTML = "Restarting server. Please wait...\n";
+                setTimeout(() => location.reload(), 4000);
             }
         }
     </script>
