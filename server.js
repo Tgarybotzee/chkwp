@@ -1,9 +1,10 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
+const fs= require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,43 +14,77 @@ app.use(express.static('public'));
 
 let sock = null;
 let isConnected = false;
+let latestQr = null; // Store the QR code so new browser tabs can load it
 
 async function startBaileys() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     sock = makeWASocket({
         auth: state,
-        logger: pino({ level: 'silent' })
+        logger: pino({ level: 'silent' }),
+        browser: ['Windows', 'Chrome', '14.0.0'] // Prevents formatting issues on some devices
     });
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, qr } = update;
+        const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            // Convert QR string to a data URL image and send to frontend
-            const qrImage = await QRCode.toDataURL(qr);
-            io.emit('qr', qrImage);
+            // Generate and save the QR locally in server memory
+            latestQr = await QRCode.toDataURL(qr);
+            io.emit('qr', latestQr);
         }
 
         if (connection === 'open') {
             isConnected = true;
-            io.emit('status', 'Client is ready! Connected to WhatsApp.');
-        } else if (connection === 'close') {
+            latestQr = null; // Clear QR from memory once connected
+            io.emit('status', { type: 'connected', msg: 'Client is ready! Connected to WhatsApp.' });
+        } 
+        else if (connection === 'close') {
             isConnected = false;
-            io.emit('status', 'Connection closed. Reconnecting...');
-            startBaileys();
+            latestQr = null;
+            
+            // Check if the user manually logged out via their phone or the dashboard
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            
+            if (shouldReconnect) {
+                io.emit('status', { type: 'reconnecting', msg: 'Connection lost. Reconnecting...' });
+                startBaileys();
+            } else {
+                io.emit('status', { type: 'disconnected', msg: 'Session logged out. Please link a new account.' });
+                // If logged out, delete the old auth folder so a new QR can be generated
+                if (fs.existsSync('./auth_info_baileys')) {
+                    fs.rmSync('./auth_info_baileys', { recursive: true, force: true });
+                }
+                startBaileys(); // Restart to generate a fresh QR
+            }
         }
     });
 }
 
 io.on('connection', (socket) => {
-    socket.emit('status', isConnected ? 'Client is ready! Connected to WhatsApp.' : 'Starting WhatsApp client...');
-    
-    // Listen for numbers from the frontend
+    // 1. Immediately sync a new browser tab with the server's current state
+    if (isConnected) {
+        socket.emit('status', { type: 'connected', msg: 'Client is ready! Connected to WhatsApp.' });
+    } else if (latestQr) {
+        socket.emit('status', { type: 'qr', msg: 'Scan the QR code to link your account.' });
+        socket.emit('qr', latestQr);
+    } else {
+        socket.emit('status', { type: 'loading', msg: 'Starting WhatsApp client...' });
+    }
+
+    // 2. Allow user to manually force a logout/reset from the dashboard
+    socket.on('reset_session', () => {
+        socket.emit('log', '⚠️ Manually resetting session...');
+        if (fs.existsSync('./auth_info_baileys')) {
+            fs.rmSync('./auth_info_baileys', { recursive: true, force: true });
+        }
+        process.exit(1); // PM2 or Render will automatically restart the server with a clean state
+    });
+
     socket.on('check_numbers', async (numbers) => {
-        if (!isConnected) {
+        if (!isConnected || !sock) {
             socket.emit('log', '⚠️ Error: WhatsApp client is not connected yet.');
             return;
         }
@@ -58,7 +93,6 @@ io.on('connection', (socket) => {
         
         for (let i = 0; i < numbers.length; i++) {
             let num = numbers[i];
-            // Auto-add 91 if it's a 10-digit number
             if (num.length === 10) num = `91${num}`;
 
             try {
@@ -74,7 +108,6 @@ io.on('connection', (socket) => {
                 socket.emit('log', `⚠️ ERROR on ${num}: ${error.message}`);
             }
 
-            // Delay between checks
             if (i < numbers.length - 1) {
                 const delayMs = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
                 await new Promise(resolve => setTimeout(resolve, delayMs));
