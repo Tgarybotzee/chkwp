@@ -139,12 +139,19 @@
             socket.emit('check_numbers', clean);
         }
 
-        function resetEngine() {
-            if (confirm("WARNING: This destroys the current session and severs the WhatsApp connection. Continue?")) {
+       function resetEngine() {
+            if (confirm("WARNING: This destroys the current session and reboots the server. Continue?")) {
                 ui.pairDisplay.style.display = 'none';
                 ui.pairHelp.style.display = 'none';
                 ui.qrImg.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+                
                 socket.emit('reset_session');
+                
+                ui.badge.className = 'status-badge bg-yellow';
+                ui.badge.innerText = 'Rebooting...';
+                
+                // Auto-refresh the browser after 4.5 seconds to catch the newly booted server
+                setTimeout(() => location.reload(), 4500);
             }
         }
     </script>
