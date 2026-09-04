@@ -109,7 +109,6 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const cleanNumber =```javascript
       const cleanNumber = phoneNumber.replace(/\D/g, '');
       socket.emit('log', `⏳ Requesting pairing code for ${cleanNumber}...`);
 
@@ -167,3 +166,21 @@ io.on('connection', (socket) => {
           socket.emit('log', `❌ [INVALID] ${num}`);
         }
       } catch (err) {
+        socket.emit('log', `⚠️ [ERROR]   ${num} - ${err.message}`);
+      }
+
+      // Randomized anti-ban delay (3 to 7 seconds)
+      if (i < numbers.length - 1) {
+        const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
+        await new Promise(res => setTimeout(res, delay));
+      }
+    }
+    socket.emit('log', '🏁 Batch verification complete.');
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Web server active on port ${PORT}`);
+  startBaileys();
+});
