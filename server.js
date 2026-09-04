@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const QRCode = require('qrcode');
 const fs = require('fs');
@@ -28,8 +28,6 @@ function resetSessionFiles() {
   } catch (err) {
     console.error('Error clearing session files:', err.message);
   }
-  isConnected = false;
-  latestQr = null;
 }
 
 async function startBaileys() {
@@ -42,7 +40,7 @@ async function startBaileys() {
     sock = makeWASocket({
       auth: state,
       logger: pino({ level: 'silent' }),
-      browser: Browsers.macOS('Chrome'),
+      browser: ['Render Server', 'Chrome', '1.0.0'],
       connectTimeoutMs: 60000,
       defaultQueryTimeoutMs: 60000
     });
@@ -67,9 +65,8 @@ async function startBaileys() {
         latestQr = null;
 
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-        if (shouldReconnect) {
+        
+        if (statusCode !== DisconnectReason.loggedOut) {
           io.emit('status', { type: 'reconnecting', msg: 'Connection lost. Reconnecting...' });
           isStarting = false;
           setTimeout(startBaileys, 3000);
@@ -100,14 +97,8 @@ io.on('connection', (socket) => {
 
   socket.on('request_pairing_code', async (phoneNumber) => {
     try {
-      if (!sock) {
-        socket.emit('log', '⚠️ Engine not initialized yet. Wait a moment...');
-        return;
-      }
-      if (sock.authState?.creds?.registered) {
-        socket.emit('log', '⚠️ Client is already paired and registered.');
-        return;
-      }
+      if (!sock) return socket.emit('log', '⚠️ Engine not initialized yet. Wait a moment...');
+      if (sock.authState?.creds?.registered) return socket.emit('log', '⚠️ Client is already paired.');
 
       const cleanNumber = phoneNumber.replace(/\D/g, '');
       socket.emit('log', `⏳ Requesting pairing code for ${cleanNumber}...`);
@@ -127,34 +118,24 @@ io.on('connection', (socket) => {
   });
 
   socket.on('reset_session', () => {
-    socket.emit('log', '⚠️ Securely logging out and resetting session...');
+    socket.emit('log', '⚠️ Wiping session data and triggering Hard Reboot...');
+    resetSessionFiles();
+    socket.emit('status', { type: 'reconnecting', msg: 'Rebooting server to generate new QR...' });
     
-    if (sock) {
-      try {
-        sock.ev.removeAllListeners();
-        sock.end(undefined);
-      } catch (err) {}
-      sock = null;
-    }
-
+    // This forces Render to restart the app cleanly
     setTimeout(() => {
-      resetSessionFiles();
-      socket.emit('status', { type: 'loading', msg: 'Generating fresh session parameters...' });
-      setTimeout(startBaileys, 1500);
-    }, 1000);
+        process.exit(0); 
+    }, 1500);
   });
 
   socket.on('check_numbers', async (numbers) => {
-    if (!isConnected || !sock) {
-      socket.emit('log', '⚠️ Engine not ready. Pair a device first.');
-      return;
-    }
+    if (!isConnected || !sock) return socket.emit('log', '⚠️ Engine not ready. Pair a device first.');
 
     socket.emit('log', `\n🚀 Initiating batch verification for ${numbers.length} targets...`);
     
     for (let i = 0; i < numbers.length; i++) {
       let num = numbers[i].replace(/\D/g, '');
-      if (num.length === 10) num = `91${num}`; // Auto-add India code if missing
+      if (num.length === 10) num = `91${num}`; 
 
       try {
         const targetJid = `${num}@s.whatsapp.net`;
@@ -169,7 +150,6 @@ io.on('connection', (socket) => {
         socket.emit('log', `⚠️ [ERROR]   ${num} - ${err.message}`);
       }
 
-      // Randomized anti-ban delay (3 to 7 seconds)
       if (i < numbers.length - 1) {
         const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
         await new Promise(res => setTimeout(res, delay));
