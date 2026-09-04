@@ -3,147 +3,148 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Checker Dashboard</title>
+    <title>WhatsApp Verifier Dashboard</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; max-width: 800px; margin: auto; background: #f9fafb; color: #111827; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .header { display: flex; justify-content: space-between; align-items: center; }
-        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; }
+        :root { --bg: #f4f4f5; --card: #ffffff; --text: #18181b; --primary: #25D366; --danger: #ef4444; }
+        * { box-sizing: border-box; font-family: -apple-system, system-ui, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 20px; max-width: 800px; margin: 0 auto; line-height: 1.5; }
+        .card { background: var(--card); padding: 24px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .status-badge { padding: 6px 14px; border-radius: 20px; font-weight: 600; font-size: 14px; transition: all 0.3s ease; }
         .bg-green { background: #dcfce7; color: #166534; }
         .bg-yellow { background: #fef08a; color: #854d0e; }
         .bg-red { background: #fee2e2; color: #991b1b; }
-        textarea { width: 100%; height: 120px; margin: 10px 0; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; }
-        input[type="text"] { padding: 10px; width: 100%; margin: 10px 0; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box;}
-        button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        .btn-primary { background: #25D366; color: white; }
-        .btn-secondary { background: #3b82f6; color: white; }
-        .btn-danger { background: #ef4444; color: white; font-size: 12px; padding: 6px 12px; }
-        #logs { background: #1f2937; color: #a7f3d0; padding: 15px; height: 300px; overflow-y: scroll; border-radius: 6px; font-family: monospace; white-space: pre-wrap; }
         
-        /* Auth Container Styles */
-        #auth-container { display: none; }
-        .auth-methods { display: flex; gap: 20px; margin-top: 15px; }
-        .method { flex: 1; text-align: center; border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; }
-        #qr-image { max-width: 200px; margin-top: 10px; border: 10px solid white; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .pairing-code-box { font-size: 28px; font-weight: bold; letter-spacing: 6px; background: #e5e7eb; padding: 15px; border-radius: 6px; margin-top: 15px; display: none; color: #111827; }
+        .auth-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; display: none; }
+        .auth-col { border: 2px dashed #e4e4e7; padding: 20px; border-radius: 8px; text-align: center; }
+        #qr-image { width: 220px; height: 220px; object-fit: contain; margin-top: 10px; border-radius: 8px; }
+        .pairing-box { font-size: 32px; font-weight: 800; letter-spacing: 8px; background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 15px 0; color: #111827; display: none; }
+        
+        input, textarea { width: 100%; padding: 12px; border: 1px solid #d4d4d8; border-radius: 8px; margin: 8px 0; font-size: 15px; }
+        textarea { height: 120px; resize: vertical; }
+        button { border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+        button:hover:not(:disabled) { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; width: 100%; font-size: 16px; }
+        .btn-secondary { background: #3b82f6; color: white; width: 100%; margin-top: 8px; }
+        .btn-danger { background: var(--danger); color: white; padding: 8px 16px; font-size: 14px; }
+        
+        .terminal { background: #09090b; color: #10b981; font-family: 'Courier New', monospace; padding: 16px; height: 350px; overflow-y: auto; border-radius: 8px; white-space: pre-wrap; margin-top: 20px; }
+        
+        @media (max-width: 600px) { .auth-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
-    <div class="card header">
-        <h2>WhatsApp Checker</h2>
+
+    <div class="card header-row">
+        <h2 style="margin: 0;">System Status</h2>
         <div>
-            <span id="status-badge" class="status-badge bg-yellow">Connecting...</span>
-            <button class="btn-danger" onclick="resetSession()">Relink Account</button>
+            <span id="status-badge" class="status-badge bg-yellow">Booting...</span>
+            <button class="btn-danger" onclick="resetEngine()" style="margin-left: 10px;">Reset Engine</button>
         </div>
     </div>
 
-    <!-- Login UI (Hidden when connected) -->
-    <div id="auth-container" class="card">
-        <h3>Link your Device</h3>
-        <div class="auth-methods">
-            <!-- QR Method -->
-            <div class="method">
-                <h4>Option 1: Scan QR</h4>
-                <p style="font-size: 14px; color: #4b5563;">Open WhatsApp > Linked Devices > Link a Device.</p>
-                <img id="qr-image" src="" alt="WhatsApp QR Code" />
+    <!-- Auth Module -->
+    <div id="auth-module" class="card">
+        <h3 style="margin-top: 0;">Device Authentication</h3>
+        <p style="color: #52525b; font-size: 14px; margin-bottom: 20px;">Link a phone to activate the verification engine.</p>
+        
+        <div class="auth-grid" id="auth-grid">
+            <div class="auth-col">
+                <h4>Method A: Scan QR</h4>
+                <p style="font-size: 13px;">WhatsApp > Linked Devices > Link</p>
+                <img id="qr-image" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="QR Code">
             </div>
             
-            <!-- Pairing Code Method -->
-            <div class="method">
-                <h4>Option 2: Pairing Code</h4>
-                <p style="font-size: 14px; color: #4b5563;">Enter the number you want to link (e.g., 919876543210)</p>
-                <input type="text" id="bot-phone" placeholder="919876543210" />
-                <button class="btn-secondary" onclick="requestPairingCode()">Get Code</button>
-                
-                <div id="pairing-code-display" class="pairing-code-box"></div>
-                <p id="pairing-hint" style="font-size: 12px; color: #6b7280; margin-top: 10px; display: none;">Enter this code on your phone when prompted by WhatsApp.</p>
+            <div class="auth-col">
+                <h4>Method B: Pairing Code</h4>
+                <p style="font-size: 13px;">Enter phone number linking</p>
+                <input type="text" id="pair-phone" placeholder="Example: 919876543210">
+                <button class="btn-secondary" onclick="requestPairingCode()">Generate Code</button>
+                <div id="pairing-display" class="pairing-box"></div>
+                <p id="pairing-help" style="font-size: 12px; color: #71717a; display: none;">Enter on WhatsApp notification</p>
             </div>
         </div>
     </div>
 
-    <!-- Number Checker UI -->
+    <!-- Operations Module -->
     <div class="card">
-        <textarea id="numbers" placeholder="Paste leads here (e.g. 9876543210, 9876543211)..."></textarea>
-        <button class="btn-primary" onclick="startCheck()" id="check-btn" disabled>Check Numbers</button>
+        <h3 style="margin-top: 0;">Verification Engine</h3>
+        <textarea id="target-numbers" placeholder="Paste leads separated by spaces, commas, or new lines..."></textarea>
+        <button class="btn-primary" id="execute-btn" onclick="executeBatch()" disabled>Launch Verification Sequence</button>
     </div>
 
-    <div id="logs"></div>
+    <!-- Terminal -->
+    <div class="terminal" id="console-output">System initialized. Awaiting connection commands...</div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        const logsDiv = document.getElementById('logs');
-        const authContainer = document.getElementById('auth-container');
-        const qrImage = document.getElementById('qr-image');
-        const statusBadge = document.getElementById('status-badge');
-        const checkBtn = document.getElementById('check-btn');
+        const ui = {
+            badge: document.getElementById('status-badge'),
+            authMod: document.getElementById('auth-module'),
+            authGrid: document.getElementById('auth-grid'),
+            qrImg: document.getElementById('qr-image'),
+            pairDisplay: document.getElementById('pairing-display'),
+            pairHelp: document.getElementById('pairing-help'),
+            execBtn: document.getElementById('execute-btn'),
+            term: document.getElementById('console-output'),
+            targets: document.getElementById('target-numbers')
+        };
 
-        // Socket listeners
+        function log(msg) {
+            ui.term.innerHTML += '\n' + msg;
+            ui.term.scrollTop = ui.term.scrollHeight;
+        }
+
         socket.on('status', (data) => {
-            statusBadge.innerText = data.msg;
-            
+            ui.badge.innerText = data.msg;
             if (data.type === 'connected') {
-                statusBadge.className = 'status-badge bg-green';
-                authContainer.style.display = 'none';
-                checkBtn.disabled = false;
-                document.getElementById('pairing-code-display').style.display = 'none'; // Reset box
+                ui.badge.className = 'status-badge bg-green';
+                ui.authGrid.style.display = 'none';
+                ui.authMod.style.display = 'none';
+                ui.execBtn.disabled = false;
             } else if (data.type === 'qr') {
-                statusBadge.className = 'status-badge bg-yellow';
-                authContainer.style.display = 'block';
-                checkBtn.disabled = true;
+                ui.badge.className = 'status-badge bg-yellow';
+                ui.authMod.style.display = 'block';
+                ui.authGrid.style.display = 'grid';
+                ui.execBtn.disabled = true;
             } else {
-                statusBadge.className = 'status-badge bg-red';
-                checkBtn.disabled = true;
+                ui.badge.className = 'status-badge bg-red';
+                ui.execBtn.disabled = true;
             }
         });
 
-        socket.on('qr', (qrDataUrl) => {
-            qrImage.src = qrDataUrl;
-        });
+        socket.on('qr', (dataUrl) => ui.qrImg.src = dataUrl);
 
         socket.on('pairing_code', (code) => {
-            const codeBox = document.getElementById('pairing-code-display');
-            const hint = document.getElementById('pairing-hint');
-            
-            // Format the code nicely (e.g., A1B2-C3D4)
-            const formattedCode = code.match(/.{1,4}/g).join('-');
-            
-            codeBox.style.display = 'block';
-            hint.style.display = 'block';
-            codeBox.innerText = formattedCode;
+            const formatted = code.match(/.{1,4}/g).join('-');
+            ui.pairDisplay.style.display = 'block';
+            ui.pairHelp.style.display = 'block';
+            ui.pairDisplay.innerText = formatted;
         });
 
-        socket.on('log', (msg) => {
-            logsDiv.innerHTML += msg + '\n';
-            logsDiv.scrollTop = logsDiv.scrollHeight;
-        });
+        socket.on('log', log);
 
-        // Functions
         function requestPairingCode() {
-            const phone = document.getElementById('bot-phone').value;
-            if(!phone) {
-                alert("Please enter a phone number with country code.");
-                return;
-            }
+            const phone = document.getElementById('pair-phone').value.replace(/\D/g, '');
+            if (!phone) return alert("Enter a valid phone number with country code.");
             socket.emit('request_pairing_code', phone);
         }
 
-        function startCheck() {
-            const input = document.getElementById('numbers').value;
-            const rawInputs = input.split(/[\s,]+/).filter(Boolean);
-            const cleanNumbers = rawInputs.map(num => num.replace(/\D/g, '')).filter(Boolean);
-            
-            if (cleanNumbers.length > 0) {
-                socket.emit('check_numbers', cleanNumbers);
-            } else {
-                alert("Please enter valid numbers.");
-            }
+        function executeBatch() {
+            const raw = ui.targets.value.split(/[\s,]+/).filter(Boolean);
+            const clean = raw.map(n => n.replace(/\D/g, '')).filter(Boolean);
+            if (!clean.length) return alert("No valid numbers detected.");
+            socket.emit('check_numbers', clean);
         }
 
-        function resetSession() {
-            if (confirm("This will log out the current WhatsApp session and clear your data. Continue?")) {
+        function resetEngine() {
+            if (confirm("WARNING: This destroys the current session and severs the WhatsApp connection. Continue?")) {
+                ui.pairDisplay.style.display = 'none';
+                ui.pairHelp.style.display = 'none';
+                ui.qrImg.src = "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
                 socket.emit('reset_session');
-                // We no longer reload the page here; the server socket events handle the UI state dynamically
             }
         }
     </script>
