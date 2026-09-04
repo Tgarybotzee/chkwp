@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Checker</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; }
+        textarea { width: 100%; height: 150px; margin-bottom: 10px; }
+        button { padding: 10px 20px; background: #25D366; color: white; border: none; cursor: pointer; }
+        #logs { background: #f0f0f0; padding: 10px; height: 300px; overflow-y: scroll; margin-top: 10px; white-space: pre-wrap; font-family: monospace;}
+        #qr-container img { max-width: 250px; }
+    </style>
+</head>
+<body>
+    <h2>WhatsApp Bulk Number Checker</h2>
+    
+    <h4 id="status">Starting client...</h4>
+    <div id="qr-container"></div>
+
+    <textarea id="numbers" placeholder="Paste numbers here, separated by spaces, commas, or new lines..."></textarea>
+    <br>
+    <button onclick="startCheck()">Check Numbers</button>
+
+    <div id="logs"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const logsDiv = document.getElementById('logs');
+        const qrContainer = document.getElementById('qr-container');
+        const statusText = document.getElementById('status');
+
+        socket.on('status', (msg) => {
+            statusText.innerText = msg;
+            if (msg.includes('ready')) qrContainer.innerHTML = ''; // Clear QR once connected
+        });
+
+        socket.on('qr', (qrImage) => {
+            qrContainer.innerHTML = `<p>Scan to log in:</p><img src="${qrImage}" />`;
+        });
+
+        socket.on('log', (msg) => {
+            logsDiv.innerHTML += msg + '\n';
+            logsDiv.scrollTop = logsDiv.scrollHeight; // Auto-scroll to bottom
+        });
+
+        function startCheck() {
+            const input = document.getElementById('numbers').value;
+            const rawInputs = input.split(/[\s,]+/).filter(Boolean);
+            const cleanNumbers = rawInputs.map(num => num.replace(/\D/g, '')).filter(Boolean);
+            
+            if (cleanNumbers.length > 0) {
+                socket.emit('check_numbers', cleanNumbers);
+            } else {
+                alert("Please enter valid numbers.");
+            }
+        }
+    </script>
+</body>
+</html>
