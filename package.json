@@ -1,7 +1,7 @@
 {
   "name": "wa-web-checker",
   "version": "1.0.0",
-  "description": "WhatsApp Number Checker Web App",
+  "description": "WhatsApp Number Verification Web Dashboard",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
